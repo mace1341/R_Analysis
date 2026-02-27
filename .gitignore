@@ -1,0 +1,19 @@
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# renv
+renv/library/
+renv/staging/
+
+# Misc
+*.Rproj
+*.Rout
+*.Rout.fail
+
+# OS/editor
+.DS_Store
+.vscode/
+.idea/
