@@ -18,3 +18,12 @@ This repository is a starter template for reproducible R analysis workflows.
 ## Reproducibility
 
 Dependencies are managed with `renv`. Use `renv::restore()` to recreate the project library from `renv.lock`.
+
+## Creating New Functions
+
+Use `R/function_template.R` as the baseline pattern when adding reusable functions:
+
+- Add roxygen2 headers (`@description`, `@param`, `@return`, `@examples`) so documentation can be generated consistently.
+- Validate arguments up front with clear, actionable error messages.
+- Keep transformation logic tidyverse-friendly and return a tibble for predictable downstream usage.
+- Add tests in `tests/testthat/` that verify expected output, input validation, and edge cases.
