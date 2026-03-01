@@ -27,3 +27,5 @@ Use `R/function_template.R` as the baseline pattern when adding reusable functio
 - Validate arguments up front with clear, actionable error messages.
 - Keep transformation logic tidyverse-friendly and return a tibble for predictable downstream usage.
 - Add tests in `tests/testthat/` that verify expected output, input validation, and edge cases.
+
+This is an edit to test git commit.
