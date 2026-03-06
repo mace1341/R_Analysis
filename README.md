@@ -13,8 +13,27 @@ This repository is a starter template for reproducible R analysis workflows.
 
 1. Install R (>= 4.3 recommended).
 2. Run `Rscript scripts/check.R` to validate your environment.
-3. Run `Rscript scripts/example_analysis.R` to execute the example analysis.
-4. Use `hello_analysis()` in `R/hello_analysis.R` as a minimal function example for reusable project code.
+3. Run `Rscript scripts/example_analysis.R` to fetch and summarize S&P 500 constituents.
+4. Use reusable functions in `R/` (for example, `hello_analysis()` and `fetch_sp500_companies()`) for downstream workflows.
+
+## S&P 500 data workflow
+
+The repository now includes `fetch_sp500_companies()` in `R/sp500_companies.R`.
+This function:
+
+- Reads the S&P 500 constituents table from Wikipedia.
+- Cleans column headers using `janitor::clean_names()`.
+- Returns a tibble for predictable downstream usage.
+- Converts `cik` into a zero-padded character field (10 digits by default).
+
+Example usage:
+
+```r
+source("R/sp500_companies.R")
+
+sp500_companies <- fetch_sp500_companies()
+str(sp500_companies)
+```
 
 ## Reproducibility
 
@@ -28,5 +47,3 @@ Use `R/function_template.R` as the baseline pattern when adding reusable functio
 - Validate arguments up front with clear, actionable error messages.
 - Keep transformation logic tidyverse-friendly and return a tibble for predictable downstream usage.
 - Add tests in `tests/testthat/` that verify expected output, input validation, and edge cases.
-
-This is an edit to test git commit.
