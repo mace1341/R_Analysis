@@ -14,6 +14,7 @@ This repository is a starter template for reproducible R analysis workflows.
 1. Install R (>= 4.3 recommended).
 2. Run `Rscript scripts/check.R` to validate your environment.
 3. Run `Rscript scripts/example_analysis.R` to execute the example analysis.
+4. Use `hello_analysis()` in `R/hello_analysis.R` as a minimal function example for reusable project code.
 
 ## Reproducibility
 
