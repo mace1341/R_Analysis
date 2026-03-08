@@ -21,11 +21,11 @@ get_edgar_quarterly_diluted_eps <- function(cik, ticker, years = 5, user_agent =
   )
 
   empty_result <- tibble::tibble(
-    cik = character(),
-    ticker = character(),
-    year = integer(),
+    CIK = character(),
+    Ticker = character(),
     quarter = character(),
-    eps = numeric(),
+    year = integer(),
+    quarterly_eps = numeric(),
     trailing_annual_eps = numeric()
   )
 
@@ -61,9 +61,9 @@ get_edgar_quarterly_diluted_eps <- function(cik, ticker, years = 5, user_agent =
       quarter = as.character(fp),
       quarter_num = unname(quarter_map[quarter]),
       filed = as.Date(filed),
-      eps = as.numeric(val)
+      quarterly_eps = as.numeric(val)
     ) |>
-    dplyr::filter(!is.na(fy), !is.na(quarter_num), !is.na(eps)) |>
+    dplyr::filter(!is.na(fy), !is.na(quarter_num), !is.na(quarterly_eps)) |>
     dplyr::arrange(dplyr::desc(filed)) |>
     dplyr::group_by(fy, quarter) |>
     dplyr::slice_head(n = 1) |>
@@ -84,17 +84,17 @@ get_edgar_quarterly_diluted_eps <- function(cik, ticker, years = 5, user_agent =
     dplyr::arrange(fy, quarter_num) |>
     dplyr::mutate(
       trailing_annual_eps =
-        eps +
-        dplyr::lag(eps, 1) +
-        dplyr::lag(eps, 2) +
-        dplyr::lag(eps, 3)
+        quarterly_eps +
+        dplyr::lag(quarterly_eps, 1) +
+        dplyr::lag(quarterly_eps, 2) +
+        dplyr::lag(quarterly_eps, 3)
     ) |>
     dplyr::transmute(
-      cik = cik_padded,
-      ticker = ticker,
-      year = fy,
+      CIK = cik_padded,
+      Ticker = ticker,
       quarter = quarter,
-      eps = eps,
+      year = fy,
+      quarterly_eps = quarterly_eps,
       trailing_annual_eps = trailing_annual_eps
     )
 }
