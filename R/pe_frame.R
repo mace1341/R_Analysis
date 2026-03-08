@@ -217,7 +217,7 @@ fetch_yahoo_adjusted_prices <- function(tickers, start_date, end_date) {
 
     tibble::tibble(
       ticker = ticker,
-      date = as.Date(rownames(adj_series)),
+      date = as.Date(xts::index(adj_series)),
       price = as.numeric(adj_series[, 1])
     ) |>
       dplyr::filter(!is.na(price))
