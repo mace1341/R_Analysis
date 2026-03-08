@@ -1,13 +1,15 @@
 #!/usr/bin/env Rscript
 
-# Edgar: retrieve the last 5 years of diluted EPS for all S&P 500 CIKs.
+# Edgar: retrieve 5 years of quarterly diluted EPS and trailing annual totals for S&P 500 CIKs.
 
 source("R/sp500_companies.R")
 
 required_packages <- c("dplyr", "httr", "jsonlite", "purrr", "stringr", "tibble")
 invisible(lapply(required_packages, require, character.only = TRUE))
 
-get_edgar_diluted_eps <- function(cik, ticker, years = 5, user_agent = NULL) {
+`%||%` <- function(a, b) if (!is.null(a) && length(a) == 1 && nzchar(a)) a else b
+
+get_edgar_quarterly_diluted_eps <- function(cik, ticker, years = 5, user_agent = NULL) {
   cik_padded <- stringr::str_pad(as.character(cik), width = 10, side = "left", pad = "0")
   ua <- user_agent %||% sprintf("EdgarEPSScript/1.0 (%s)", Sys.info()[["user"]])
 
@@ -18,8 +20,17 @@ get_edgar_diluted_eps <- function(cik, ticker, years = 5, user_agent = NULL) {
     error = function(e) NULL
   )
 
+  empty_result <- tibble::tibble(
+    cik = character(),
+    ticker = character(),
+    year = integer(),
+    quarter = character(),
+    eps = numeric(),
+    trailing_annual_eps = numeric()
+  )
+
   if (is.null(response) || httr::http_error(response)) {
-    return(tibble::tibble(cik = character(), ticker = character(), year = integer(), eps = numeric()))
+    return(empty_result)
   }
 
   payload <- tryCatch(
@@ -29,40 +40,64 @@ get_edgar_diluted_eps <- function(cik, ticker, years = 5, user_agent = NULL) {
 
   if (is.null(payload) ||
       is.null(payload$facts$`us-gaap`$EarningsPerShareDiluted$units)) {
-    return(tibble::tibble(cik = character(), ticker = character(), year = integer(), eps = numeric()))
+    return(empty_result)
   }
 
   eps_units <- payload$facts$`us-gaap`$EarningsPerShareDiluted$units
   eps_values <- dplyr::bind_rows(lapply(eps_units, tibble::as_tibble), .id = "unit")
 
   if (nrow(eps_values) == 0) {
-    return(tibble::tibble(cik = character(), ticker = character(), year = integer(), eps = numeric()))
+    return(empty_result)
   }
 
-  annual_forms <- c("10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A")
+  quarterly_forms <- c("10-Q", "10-Q/A", "10-QT", "10-QT/A")
 
-  eps_values |>
-    dplyr::filter(!is.na(fy), form %in% annual_forms) |>
+  quarter_map <- c(Q1 = 1L, Q2 = 2L, Q3 = 3L, Q4 = 4L)
+
+  quarterly_data <- eps_values |>
+    dplyr::filter(!is.na(fy), !is.na(fp), form %in% quarterly_forms, fp %in% names(quarter_map)) |>
     dplyr::mutate(
       fy = suppressWarnings(as.integer(fy)),
-      filed = as.Date(filed)
+      quarter = as.character(fp),
+      quarter_num = unname(quarter_map[quarter]),
+      filed = as.Date(filed),
+      eps = as.numeric(val)
     ) |>
-    dplyr::filter(!is.na(fy), !is.na(val)) |>
+    dplyr::filter(!is.na(fy), !is.na(quarter_num), !is.na(eps)) |>
     dplyr::arrange(dplyr::desc(filed)) |>
-    dplyr::group_by(fy) |>
+    dplyr::group_by(fy, quarter) |>
     dplyr::slice_head(n = 1) |>
-    dplyr::ungroup() |>
+    dplyr::ungroup()
+
+  if (nrow(quarterly_data) == 0) {
+    return(empty_result)
+  }
+
+  latest_years <- quarterly_data |>
+    dplyr::distinct(fy) |>
     dplyr::arrange(dplyr::desc(fy)) |>
     dplyr::slice_head(n = years) |>
+    dplyr::pull(fy)
+
+  quarterly_data |>
+    dplyr::filter(fy %in% latest_years) |>
+    dplyr::arrange(fy, quarter_num) |>
+    dplyr::mutate(
+      trailing_annual_eps =
+        eps +
+        dplyr::lag(eps, 1) +
+        dplyr::lag(eps, 2) +
+        dplyr::lag(eps, 3)
+    ) |>
     dplyr::transmute(
       cik = cik_padded,
       ticker = ticker,
       year = fy,
-      eps = as.numeric(val)
+      quarter = quarter,
+      eps = eps,
+      trailing_annual_eps = trailing_annual_eps
     )
 }
-
-`%||%` <- function(a, b) if (!is.null(a) && length(a) == 1 && nzchar(a)) a else b
 
 sp_500 <- fetch_sp500_companies() |>
   dplyr::select(cik, symbol) |>
@@ -82,7 +117,7 @@ financial_data <- purrr::map2_dfr(
   sp_500_subset$ticker,
   function(cik, ticker) {
     Sys.sleep(0.12)
-    get_edgar_diluted_eps(cik = cik, ticker = ticker, years = 5, user_agent = user_agent)
+    get_edgar_quarterly_diluted_eps(cik = cik, ticker = ticker, years = 5, user_agent = user_agent)
   }
 )
 
