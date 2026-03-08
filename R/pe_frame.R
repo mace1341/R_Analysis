@@ -6,7 +6,7 @@
 #' - `pe`: daily 30-day average price merged with forward-filled twelve-month EPS,
 #'   plus sector metadata and computed P/E ratio.
 #'
-#' Price history is retrieved from Yahoo Finance via Python `yfinance`.
+#' Price history is retrieved from Yahoo Finance via `quantmod::getSymbols()`.
 #'
 #' @param financial_data Data frame containing at least `cik`, `ticker`, `year`,
 #'   `quarter`, and trailing 12-month EPS (`trailing_annual_eps` or
@@ -15,7 +15,7 @@
 #'   and category columns. If `NULL`, this is fetched via `fetch_sp500_companies()`.
 #' @param years Number of years of daily prices to retrieve. Default is `5`.
 #' @param price_data Optional pre-built daily price frame with `ticker`, `date`,
-#'   and `price` columns; if supplied, yfinance download is skipped.
+#'   and `price` columns; if supplied, Yahoo download is skipped.
 #'
 #' @return A named list with elements `price` and `pe`.
 #' @examples
@@ -117,7 +117,7 @@ build_pe_and_price_frames <- function(financial_data,
   if (is.null(price_data)) {
     end_date <- Sys.Date()
     start_date <- end_date - as.integer(round(years * 365.25))
-    price_data <- fetch_yfinance_adjusted_prices(
+    price_data <- fetch_yahoo_adjusted_prices(
       tickers = tickers,
       start_date = start_date,
       end_date = end_date
@@ -180,7 +180,7 @@ build_pe_and_price_frames <- function(financial_data,
   list(price = price, pe = pe)
 }
 
-fetch_yfinance_adjusted_prices <- function(tickers, start_date, end_date) {
+fetch_yahoo_adjusted_prices <- function(tickers, start_date, end_date) {
   if (length(tickers) == 0) {
     return(tibble::tibble(ticker = character(), date = as.Date(character()), price = numeric()))
   }
@@ -189,56 +189,39 @@ fetch_yfinance_adjusted_prices <- function(tickers, start_date, end_date) {
   start_date <- as.Date(start_date)
   end_date <- as.Date(end_date)
 
-  script_path <- tempfile(fileext = ".py")
-  json_out <- tempfile(fileext = ".json")
-
-  py_code <- paste(
-    "import json",
-    "import pandas as pd",
-    "import yfinance as yf",
-    "import sys",
-    "tickers = sys.argv[1].split(',')",
-    "start_date = sys.argv[2]",
-    "end_date = sys.argv[3]",
-    "out_file = sys.argv[4]",
-    "df = yf.download(tickers=tickers, start=start_date, end=end_date, auto_adjust=False, progress=False, group_by='ticker', threads=True)",
-    "records = []",
-    "if isinstance(df.columns, pd.MultiIndex):",
-    "    for ticker in tickers:",
-    "        if ticker in df.columns.get_level_values(0):",
-    "            sub = df[ticker].reset_index()",
-    "            if 'Adj Close' in sub.columns:",
-    "                sub = sub[['Date', 'Adj Close']].dropna()",
-    "                for _, row in sub.iterrows():",
-    "                    records.append({'ticker': ticker, 'date': row['Date'].strftime('%Y-%m-%d'), 'price': float(row['Adj Close'])})",
-    "else:",
-    "    sub = df.reset_index()",
-    "    if 'Adj Close' in sub.columns and len(tickers) == 1:",
-    "        for _, row in sub[['Date', 'Adj Close']].dropna().iterrows():",
-    "            records.append({'ticker': tickers[0], 'date': row['Date'].strftime('%Y-%m-%d'), 'price': float(row['Adj Close'])})",
-    "with open(out_file, 'w', encoding='utf-8') as f:",
-    "    json.dump(records, f)",
-    sep = "\n"
-  )
-
-  writeLines(py_code, script_path)
-
-  result <- system2(
-    command = "python",
-    args = c(script_path, paste(tickers, collapse = ","), as.character(start_date), as.character(end_date), json_out),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-
-  if (!file.exists(json_out)) {
-    stop(sprintf("Failed to fetch yfinance data via Python. Output: %s", paste(result, collapse = "\n")), call. = FALSE)
+  if (!requireNamespace("quantmod", quietly = TRUE)) {
+    stop("Package `quantmod` is required to download Yahoo price data.", call. = FALSE)
   }
 
-  records <- jsonlite::fromJSON(json_out)
-  if (length(records) == 0) {
-    return(tibble::tibble(ticker = character(), date = as.Date(character()), price = numeric()))
+  pull_one_ticker <- function(ticker) {
+    symbol_xts <- tryCatch(
+      quantmod::getSymbols(
+        Symbols = ticker,
+        src = "yahoo",
+        from = start_date,
+        to = end_date,
+        auto.assign = FALSE,
+        warnings = FALSE
+      ),
+      error = function(e) NULL
+    )
+
+    if (is.null(symbol_xts)) {
+      return(tibble::tibble(ticker = character(), date = as.Date(character()), price = numeric()))
+    }
+
+    adj_series <- tryCatch(quantmod::Ad(symbol_xts), error = function(e) NULL)
+    if (is.null(adj_series)) {
+      return(tibble::tibble(ticker = character(), date = as.Date(character()), price = numeric()))
+    }
+
+    tibble::tibble(
+      ticker = ticker,
+      date = as.Date(rownames(adj_series)),
+      price = as.numeric(adj_series[, 1])
+    ) |>
+      dplyr::filter(!is.na(price))
   }
 
-  tibble::as_tibble(records) |>
-    dplyr::mutate(date = as.Date(date), price = as.numeric(price))
+  dplyr::bind_rows(lapply(tickers, pull_one_ticker))
 }

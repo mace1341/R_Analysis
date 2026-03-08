@@ -3,7 +3,7 @@
 source("R/sp500_companies.R")
 source("R/pe_frame.R")
 
-required_packages <- c("dplyr", "jsonlite", "tibble")
+required_packages <- c("dplyr", "tibble")
 invisible(lapply(required_packages, require, character.only = TRUE))
 
 if (!exists("financial_data", inherits = FALSE)) {
